@@ -1,0 +1,253 @@
+name: Build Custom Font Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      buildId:
+        description: 'Custom build ID'
+        required: true
+      fonts:
+        description: 'JSON array of font paths to replace'
+        required: true
+      fontLabels:
+        description: 'JSON object mapping family names to custom labels'
+        required: false
+        default: '{}'
+      fontSizes:
+        description: 'JSON object mapping family names to [s,m,l,xl] point sizes'
+        required: false
+        default: '{}'
+      webhookBaseUrl:
+        description: 'Base URL for webhook callbacks'
+        required: false
+        default: 'https://crosspointreader.com'
+
+concurrency:
+  group: custom-font-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve webhook base URL
+        env:
+          WEBHOOK_BASE_URL_RAW: ${{ inputs.webhookBaseUrl }}
+        run: |
+          BASE="${WEBHOOK_BASE_URL_RAW:-https://crosspointreader.com}"
+          echo "WEBHOOK_BASE_URL=${BASE%/}" >> "$GITHUB_ENV"
+
+      - name: Mark build as started
+        run: |
+          curl -s -X POST "${WEBHOOK_BASE_URL}/api/custom-build/status-update" \
+            -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"buildId":"${{ inputs.buildId }}","status":"building"}'
+
+      - name: Checkout crosspoint-reader
+        uses: actions/checkout@v6
+        with:
+          repository: crosspoint-reader/crosspoint-reader
+          ref: master
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download and replace custom fonts
+        run: |
+          FONT_SOURCE_DIR="lib/EpdFont/builtinFonts/source"
+          FONTS='${{ inputs.fonts }}'
+
+          echo "Replacing fonts: $FONTS"
+
+          echo "$FONTS" | jq -r '.[]' | while read -r font_path; do
+            echo "Downloading: $font_path"
+            # font_path is like "NotoSerif/NotoSerif-Regular.ttf"
+            target="$FONT_SOURCE_DIR/$font_path"
+
+            curl -sf "${WEBHOOK_BASE_URL}/api/custom-build/fonts/${{ inputs.buildId }}/$font_path" \
+              -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+              -o "$target"
+
+            echo "Replaced: $target ($(stat -c%s "$target") bytes)"
+          done
+
+      - name: Update font labels in translations
+        run: |
+          LABELS='${{ inputs.fontLabels }}'
+          TRANSLATIONS_DIR="lib/I18n/translations"
+
+          # Process each label
+          echo "$LABELS" | jq -r 'to_entries[] | "\(.key)\t\(.value)"' > /tmp/labels.tsv
+
+          while IFS=$'\t' read -r family label; do
+            # Map family directory names to translation string keys
+            case "$family" in
+              NotoSerif)    KEY="STR_NOTO_SERIF" ;;
+              NotoSans)     KEY="STR_NOTO_SANS" ;;
+              OpenDyslexic) KEY="STR_OPEN_DYSLEXIC" ;;
+              *)            echo "Unknown font family: $family, skipping"; continue ;;
+            esac
+
+            echo "Renaming $family to '$label' ($KEY) across all translations"
+            find "$TRANSLATIONS_DIR" -name "*.yaml" -exec sed -i "s|${KEY}: \".*\"|${KEY}: \"${label}\"|" {} +
+
+            # Verify
+            COUNT=$(grep -rl "\"${label}\"" "$TRANSLATIONS_DIR" | wc -l)
+            echo "Verified: $COUNT translation files updated"
+          done < /tmp/labels.tsv
+
+      - name: Apply custom font sizes
+        run: |
+          SIZES='${{ inputs.fontSizes }}'
+          if [ "$SIZES" = "{}" ] || [ -z "$SIZES" ]; then
+            echo "No custom font sizes, skipping"
+            exit 0
+          fi
+
+          CONVERT_SCRIPT="lib/EpdFont/scripts/convert-builtin-fonts.sh"
+          FONT_IDS_SCRIPT="lib/EpdFont/scripts/build-font-ids.sh"
+          ALL_H="lib/EpdFont/builtinFonts/all.h"
+          SETTINGS_CPP="src/CrossPointSettings.cpp"
+
+          echo "$SIZES" | jq -r 'to_entries[] | "\(.key)\t\(.value | join(","))"' > /tmp/sizes.tsv
+
+          while IFS=$'\t' read -r family sizes_csv; do
+            IFS=',' read -ra NEW_SIZES <<< "$sizes_csv"
+
+            # Determine old default sizes and naming prefix
+            case "$family" in
+              NotoSerif)
+                OLD_SIZES=(12 14 16 18)
+                PREFIX="notoserif"
+                SIZES_VAR="NOTOSERIF_FONT_SIZES"
+                ID_PREFIX="NOTOSERIF"
+                ;;
+              NotoSans)
+                OLD_SIZES=(12 14 16 18)
+                PREFIX="notosans"
+                SIZES_VAR="NOTOSANS_FONT_SIZES"
+                ID_PREFIX="NOTOSANS"
+                ;;
+              OpenDyslexic)
+                OLD_SIZES=(8 10 12 14)
+                PREFIX="opendyslexic"
+                SIZES_VAR="OPENDYSLEXIC_FONT_SIZES"
+                ID_PREFIX="OPENDYSLEXIC"
+                ;;
+              *) echo "Unknown family: $family, skipping"; continue ;;
+            esac
+
+            echo "Customizing $family sizes: [${OLD_SIZES[*]}] -> [${NEW_SIZES[*]}]"
+
+            # 1. Update size array in convert-builtin-fonts.sh
+            sed -i "s|${SIZES_VAR}=(${OLD_SIZES[*]})|${SIZES_VAR}=(${NEW_SIZES[*]})|" "$CONVERT_SCRIPT"
+
+            # 2. Update all.h includes and build-font-ids.sh and CrossPointSettings.cpp
+            #    Replace each old size reference with the new size
+            for i in 0 1 2 3; do
+              OLD="${OLD_SIZES[$i]}"
+              NEW="${NEW_SIZES[$i]}"
+              if [ "$OLD" = "$NEW" ]; then continue; fi
+
+              echo "  Replacing ${PREFIX}_${OLD} -> ${PREFIX}_${NEW}"
+
+              # all.h: update #include lines
+              sed -i "s|${PREFIX}_${OLD}_|${PREFIX}_${NEW}_|g" "$ALL_H"
+
+              # build-font-ids.sh: update file references and #define names
+              sed -i "s|${ID_PREFIX}_${OLD}_FONT_ID|${ID_PREFIX}_${NEW}_FONT_ID|g" "$FONT_IDS_SCRIPT"
+              sed -i "s|${PREFIX}_${OLD}_|${PREFIX}_${NEW}_|g" "$FONT_IDS_SCRIPT"
+
+              # CrossPointSettings.cpp: update font ID references
+              sed -i "s|${ID_PREFIX}_${OLD}_FONT_ID|${ID_PREFIX}_${NEW}_FONT_ID|g" "$SETTINGS_CPP"
+
+              # src/*.cpp and src/*.h: update all font references
+              # - data struct refs: notoserif_12_regular
+              # - variable names: notoserif12RegularFont
+              # - font ID constants: NOTOSERIF_12_FONT_ID
+              find src -name "*.cpp" -o -name "*.h" | xargs sed -i "s|${PREFIX}_${OLD}_|${PREFIX}_${NEW}_|g"
+              find src -name "*.cpp" -o -name "*.h" | xargs sed -i "s|${PREFIX}${OLD}|${PREFIX}${NEW}|g"
+              find src -name "*.cpp" -o -name "*.h" | xargs sed -i "s|${ID_PREFIX}_${OLD}_FONT_ID|${ID_PREFIX}_${NEW}_FONT_ID|g"
+            done
+
+            echo "Verified convert script:"
+            grep "$SIZES_VAR" "$CONVERT_SCRIPT"
+          done < /tmp/sizes.tsv
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Install PlatformIO Core
+        run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+
+      - name: Install font conversion dependencies
+        run: |
+          uv pip install --system freetype-py brotli fonttools
+
+      - name: Convert fonts
+        run: |
+          cd lib/EpdFont/scripts
+          bash convert-builtin-fonts.sh
+
+      - name: Regenerate font IDs
+        if: ${{ inputs.fontSizes != '{}' && inputs.fontSizes != '' }}
+        run: |
+          cd lib/EpdFont/scripts
+          bash build-font-ids.sh > ../../../src/fontIds.h
+          echo "Generated fontIds.h:"
+          cat ../../../src/fontIds.h
+
+      - name: Set build version
+        id: info
+        run: |
+          VERSION=$(grep -oP 'version\s*=\s*\K.*' platformio.ini | head -1)
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_VERSION="${VERSION}-custom+${COMMIT}"
+          sed -i "s|version = ${VERSION}|version = ${BUILD_VERSION}|" platformio.ini
+          echo "version=${BUILD_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Firmware version: $BUILD_VERSION"
+
+      - name: Build CrossPoint
+        run: pio run -e gh_release
+
+      - name: Upload custom firmware
+        run: |
+          curl -sf -X PUT "${WEBHOOK_BASE_URL}/api/custom-build/upload-result" \
+            -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+            -H "X-Build-Id: ${{ inputs.buildId }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @".pio/build/gh_release/firmware.bin"
+
+      - name: Update build status (success)
+        run: |
+          SIZE=$(stat -c%s ".pio/build/gh_release/firmware.bin")
+          curl -s -X POST "${WEBHOOK_BASE_URL}/api/custom-build/status-update" \
+            -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"buildId\": \"${{ inputs.buildId }}\",
+              \"status\": \"success\",
+              \"firmwareSize\": $SIZE,
+              \"version\": \"${{ steps.info.outputs.version }}\"
+            }"
+
+      - name: Mark build failed
+        if: failure()
+        run: |
+          curl -s -X POST "${WEBHOOK_BASE_URL}/api/custom-build/status-update" \
+            -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"buildId\": \"${{ inputs.buildId }}\",
+              \"status\": \"failed\",
+              \"error\": \"Build failed. Check GitHub Actions logs for details.\"
+            }"

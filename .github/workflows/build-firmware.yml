@@ -1,0 +1,248 @@
+name: Build CrossPoint Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      webhookBaseUrl:
+        description: 'Base URL for webhook callbacks'
+        required: false
+        default: 'https://crosspointreader.com'
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve webhook base URL
+        env:
+          WEBHOOK_BASE_URL_RAW: ${{ inputs.webhookBaseUrl }}
+        run: |
+          BASE="${WEBHOOK_BASE_URL_RAW:-https://crosspointreader.com}"
+          echo "WEBHOOK_BASE_URL=${BASE%/}" >> "$GITHUB_ENV"
+
+      - name: Check for new commits
+        id: check
+        run: |
+          # Get latest upstream commit
+          COMMIT_JSON=$(curl -s -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/commits/master")
+
+          LATEST=$(echo "$COMMIT_JSON" | jq -r '.sha')
+          SHORT="${LATEST:0:7}"
+          # Use heredoc for multiline-safe output
+          {
+            echo "commit=$LATEST"
+            echo "commit_short=$SHORT"
+          } >> "$GITHUB_OUTPUT"
+
+          # Get first line of commit message only
+          MSG=$(echo "$COMMIT_JSON" | jq -r '.commit.message' | head -1 | tr -d '\r')
+          # Use heredoc delimiter for message to handle special chars
+          {
+            echo "message<<MSG_EOF"
+            echo "$MSG"
+            echo "MSG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # For workflow_dispatch, always build
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger - building $SHORT"
+            exit 0
+          fi
+
+          # Check if we already built this commit successfully
+          BUILD_JSON=$(curl -s "${WEBHOOK_BASE_URL}/api/build/latest")
+          CURRENT=$(echo "$BUILD_JSON" | jq -r '.commit // empty')
+          CURRENT_STATUS=$(echo "$BUILD_JSON" | jq -r '.status // empty')
+          if [ "$CURRENT" = "$LATEST" ] && [ "$CURRENT_STATUS" = "success" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Already built $LATEST successfully, skipping"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "New commit or previous build not successful: $SHORT (status: $CURRENT_STATUS)"
+          fi
+
+      - name: Mark build as started
+        if: steps.check.outputs.skip == 'false'
+        env:
+          COMMIT: ${{ steps.check.outputs.commit }}
+          COMMIT_SHORT: ${{ steps.check.outputs.commit_short }}
+          COMMIT_MSG: ${{ steps.check.outputs.message }}
+        run: |
+          jq -n \
+            --arg status "building" \
+            --arg commit "$COMMIT" \
+            --arg commitShort "$COMMIT_SHORT" \
+            --arg commitMessage "$COMMIT_MSG" \
+            '{status:$status, commit:$commit, commitShort:$commitShort, commitMessage:$commitMessage}' \
+          | curl -s -X POST "${WEBHOOK_BASE_URL}/api/build/status" \
+              -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d @-
+
+      - name: Checkout crosspoint-reader
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/checkout@v6
+        with:
+          repository: crosspoint-reader/crosspoint-reader
+          ref: master
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Python
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        if: steps.check.outputs.skip == 'false'
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Install PlatformIO Core
+        if: steps.check.outputs.skip == 'false'
+        run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+
+      - name: Set build version
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          VERSION=$(grep -oP 'version\s*=\s*\K.*' platformio.ini | head -1)
+          BUILD_VERSION="${VERSION}-dev+${{ steps.check.outputs.commit_short }}"
+          sed -i "s|version = ${VERSION}|version = ${BUILD_VERSION}|" platformio.ini
+          echo "Firmware version: $BUILD_VERSION"
+
+      - name: Build CrossPoint
+        if: steps.check.outputs.skip == 'false'
+        run: pio run -e gh_release
+
+      - name: Get version and changelog
+        if: steps.check.outputs.skip == 'false'
+        id: info
+        run: |
+          # Version was already patched in platformio.ini by "Set build version" step
+          VERSION=$(grep -oP 'version\s*=\s*\K.*' platformio.ini | head -1)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Changelog as JSON array — build with jq for safe escaping
+          BASE_REF=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          git log "${BASE_REF}..HEAD" --pretty=format:"%H%x09%h%x09%an%x09%aI%x09%s" | while IFS=$'\t' read -r hash short author date msg; do
+            jq -n --arg h "$hash" --arg s "$short" --arg a "$author" --arg d "$date" --arg m "$msg" \
+              '{hash:$h, hashShort:$s, author:$a, date:$d, message:$m}'
+          done | jq -s '.' > /tmp/changelog.json
+
+      - name: Upload firmware to R2
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          curl -s -X PUT "${WEBHOOK_BASE_URL}/api/build/upload" \
+            -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+            -H "Content-Type: application/octet-stream" \
+            -H "X-Build-Commit: ${{ steps.check.outputs.commit }}" \
+            -H "X-Build-Version: ${{ steps.info.outputs.version }}" \
+            --data-binary @".pio/build/gh_release/firmware.bin"
+
+      - name: Update build metadata (success)
+        if: steps.check.outputs.skip == 'false'
+        env:
+          COMMIT: ${{ steps.check.outputs.commit }}
+          COMMIT_SHORT: ${{ steps.check.outputs.commit_short }}
+          COMMIT_MSG: ${{ steps.check.outputs.message }}
+          VERSION: ${{ steps.info.outputs.version }}
+        run: |
+          FIRMWARE=".pio/build/gh_release/firmware.bin"
+          SIZE=$(stat -c%s "$FIRMWARE")
+          CHANGELOG=$(cat /tmp/changelog.json)
+
+          jq -n \
+            --arg status "success" \
+            --arg commit "$COMMIT" \
+            --arg commitShort "$COMMIT_SHORT" \
+            --arg commitMessage "$COMMIT_MSG" \
+            --arg version "$VERSION" \
+            --argjson firmwareSize "$SIZE" \
+            --argjson changelog "$CHANGELOG" \
+            '{status:$status, commit:$commit, commitShort:$commitShort, commitMessage:$commitMessage, version:$version, firmwareSize:$firmwareSize, changelog:$changelog, error:null, buildLog:null}' \
+          | curl -s -X POST "${WEBHOOK_BASE_URL}/api/build/status" \
+              -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d @-
+
+      # --- Cache stock firmware from Xteink servers (unreachable from Cloudflare Workers) ---
+
+      - name: Cache stock firmware on R2
+        run: |
+          MODELS="x4 x3"
+          LANGS="en ch"
+
+          for model in $MODELS; do
+            for lang in $LANGS; do
+              echo "Checking stock firmware: $model/$lang"
+
+              # Get current version from check-update API.
+              # These MUST match the live endpoints the worker uses in src/index.ts
+              # (STOCK_CHECK_URLS). The old gotaserver.xteink.com / raw-IP endpoints are
+              # abandoned and frozen at V5.1.6/V5.3.9, which is why the cache served old firmware.
+              CHECK_URLS_x4_ch="https://api-prod.xteink.cn/api/v1/check-update?current_version=V5.1.0&device_type=ESP32C3&device_id=12345&lng=en"
+              CHECK_URLS_x4_en="https://api-prod.xteink.cc/api/v1/check-update?current_version=V5.1.0&device_type=ESP32C3&device_id=12345&lng=en"
+              CHECK_URLS_x3_ch="https://api-prod.xteink.cn/api/v1/check-update?current_version=V5.1.0&device_type=ESP32C3_X3&device_id=12345&lng=en"
+              CHECK_URLS_x3_en="https://api-prod.xteink.cc/api/v1/check-update?current_version=V5.1.0&device_type=ESP32C3_X3&device_id=12345&lng=en"
+
+              VAR_NAME="CHECK_URLS_${model}_${lang}"
+              CHECK_URL="${!VAR_NAME}"
+
+              RESPONSE=$(curl -s --max-time 10 "$CHECK_URL" || echo '{}')
+              VERSION=$(echo "$RESPONSE" | jq -r '.data.version // empty')
+              DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.download_url // empty')
+
+              if [ -z "$VERSION" ] || [ -z "$DOWNLOAD_URL" ]; then
+                echo "  Skipping $model/$lang — no version info from API"
+                continue
+              fi
+
+              # Check if we already cached this version
+              CACHED=$(curl -s "${WEBHOOK_BASE_URL}/api/firmware/stock/info?model=$model&lang=$lang" | jq -r '.version // empty')
+              # We don't have a way to check the R2 cached version vs API version easily,
+              # so just re-cache every time (idempotent, ~6MB upload)
+
+              echo "  Downloading $model/$lang $VERSION..."
+              curl -s --max-time 60 -o "/tmp/stock-${model}-${lang}.bin" "$DOWNLOAD_URL"
+
+              if [ ! -s "/tmp/stock-${model}-${lang}.bin" ]; then
+                echo "  Download failed or empty, skipping"
+                continue
+              fi
+
+              SIZE=$(stat -c%s "/tmp/stock-${model}-${lang}.bin")
+              echo "  Uploading to R2: $model/$lang $VERSION ($SIZE bytes)"
+
+              curl -s -X PUT "${WEBHOOK_BASE_URL}/api/firmware/stock/cache?model=$model&lang=$lang" \
+                -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+                -H "Content-Type: application/octet-stream" \
+                -H "X-Firmware-Version: $VERSION" \
+                --data-binary @"/tmp/stock-${model}-${lang}.bin"
+
+              echo "  Done: $model/$lang $VERSION"
+            done
+          done
+
+      - name: Mark build as failed
+        if: failure() && steps.check.outputs.skip == 'false'
+        env:
+          COMMIT: ${{ steps.check.outputs.commit }}
+          COMMIT_SHORT: ${{ steps.check.outputs.commit_short }}
+        run: |
+          jq -n \
+            --arg status "failed" \
+            --arg commit "$COMMIT" \
+            --arg commitShort "$COMMIT_SHORT" \
+            --arg error "Build failed — check GitHub Actions logs" \
+            '{status:$status, commit:$commit, commitShort:$commitShort, error:$error}' \
+          | curl -s -X POST "${WEBHOOK_BASE_URL}/api/build/status" \
+              -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d @-
