@@ -8,7 +8,7 @@
   <meta property="og:title" content="CrossPoint + AirBook">
   <meta property="og:description" content="Web flasher for CrossPoint + AirBook. Send ebooks wirelessly from iPhone to your e-reader over BLE.">
   <meta property="og:type" content="website">
-  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="icon" type="image/png" href="favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&display=swap" rel="stylesheet">
@@ -26,9 +26,26 @@
   </script>
   <style>
     .air { font-weight: 200; }
+    /* Soft radial highlight behind the hero */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 0%, rgba(186, 230, 253, 0.35), transparent 70%),
+        radial-gradient(ellipse 70% 50% at 50% 100%, rgba(254, 240, 220, 0.5), transparent 60%);
+      z-index: -1;
+    }
+    /* Focus rings */
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid rgb(14 165 233);
+      outline-offset: 2px;
+      border-radius: 0.75rem;
+    }
   </style>
 </head>
-<body class="bg-stone-50 min-h-screen flex flex-col items-center justify-center px-5 py-16 selection:bg-sky-100">
+<body class="bg-stone-50 min-h-screen flex flex-col items-center justify-center px-5 py-16 selection:bg-sky-100 antialiased">
 
   <!-- JS error banner (hidden unless a fatal error occurs) -->
   <div id="js-error-banner" class="hidden fixed top-0 left-0 right-0 z-50 bg-red-600 px-4 py-3 text-white text-sm text-center font-medium shadow-lg"></div>
@@ -37,22 +54,22 @@
 
     <!-- Hero -->
     <header>
-      <p class="text-stone-400 text-xs font-medium tracking-[0.2em] uppercase mb-6">CrossPoint Reader Fork</p>
+      <p class="text-stone-500 text-xs font-semibold tracking-[0.2em] uppercase mb-6">CrossPoint Reader Fork</p>
       <h1 class="text-5xl sm:text-6xl leading-[1.1] tracking-tight">
         <span class="font-light text-stone-800">CrossPoint</span>
         <span class="font-light text-stone-400">+</span>
         <br>
-        <span class="air text-sky-400">Air</span><span class="font-medium text-stone-800">Book</span>
+        <span class="air text-sky-500">Air</span><span class="font-medium text-stone-800">Book</span>
       </h1>
-      <p class="mt-6 text-stone-500 text-base leading-relaxed max-w-sm mx-auto">
-        Adds <strong class="text-stone-700">AirBook for CrossPoint</strong> support&thinsp;&mdash;&thinsp;the iOS companion app.
+      <p class="mt-6 text-stone-600 text-base leading-relaxed max-w-sm mx-auto">
+        Adds <strong class="text-stone-800">AirBook for CrossPoint</strong> support&thinsp;&mdash;&thinsp;the iOS companion app.
         Send ebooks from iPhone or iPad to your e-reader over Bluetooth Low Energy.
       </p>
 
       <!-- Status badges -->
-      <div class="mt-5 flex flex-col items-center gap-2">
+      <div class="mt-6 flex flex-col items-center gap-2">
         <div id="upstream-badge">
-          <span class="inline-block h-5 w-20 rounded-full bg-stone-100 animate-pulse"></span>
+          <span class="inline-block h-6 w-44 rounded-full bg-stone-100 animate-pulse"></span>
         </div>
         <div id="release-badge"></div>
       </div>
@@ -60,13 +77,16 @@
 
     <!-- Action Card -->
     <section class="mt-10 w-full">
-      <div class="bg-white rounded-2xl shadow-sm ring-1 ring-stone-950/5 p-6 sm:p-8 text-left">
-        <h2 class="text-lg font-semibold text-stone-800">Install Firmware</h2>
-        <p class="mt-1 text-sm text-stone-400">Flash the latest build from your browser, or download the .bin for SD card installation.</p>
+      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-[0_2px_30px_-8px_rgba(15,23,42,0.08)] ring-1 ring-stone-950/[0.06] p-6 sm:p-8 text-left">
+        <div class="flex items-baseline justify-between gap-3">
+          <h2 class="text-lg font-semibold text-stone-800">Install Firmware</h2>
+          <span id="firmware-tag" class="hidden text-[11px] font-mono text-stone-500 bg-stone-100 rounded-md px-1.5 py-0.5"></span>
+        </div>
+        <p class="mt-1 text-sm text-stone-500">Flash the latest build from your browser, or download the <code class="text-[12px] bg-stone-100 rounded px-1 font-mono text-stone-600">.bin</code> for SD card installation.</p>
 
         <!-- Flash button -->
         <button id="flash-btn" type="button"
-          class="mt-5 w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-sky-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-sky-600 active:bg-sky-700 transition-all disabled:bg-stone-300 disabled:text-stone-500 disabled:cursor-not-allowed shadow-sm">
+          class="mt-5 w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-sky-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-sky-600 active:bg-sky-700 transition-all duration-150 hover:-translate-y-px hover:shadow-md disabled:bg-stone-300 disabled:text-stone-500 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none shadow-sm">
           <svg id="flash-icon" class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
           </svg>
@@ -79,7 +99,7 @@
 
         <!-- SD Download button -->
         <button id="download-btn" type="button"
-          class="mt-3 w-full inline-flex items-center justify-center gap-2.5 rounded-xl border border-stone-200 bg-white px-5 py-3 text-sm font-medium text-stone-600 hover:bg-stone-50 active:bg-stone-100 transition-all disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed">
+          class="mt-3 w-full inline-flex items-center justify-center gap-2.5 rounded-xl border border-stone-200 bg-white px-5 py-3 text-sm font-medium text-stone-700 hover:bg-stone-50 hover:border-stone-300 active:bg-stone-100 transition-all duration-150 disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed">
           <svg id="dl-icon" class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
           </svg>
@@ -93,34 +113,54 @@
         <!-- Progress -->
         <div id="progress-area" class="hidden mt-5">
           <div class="flex items-center justify-between text-sm mb-2">
-            <span id="progress-step" class="text-stone-600 font-medium">Connecting...</span>
-            <span id="progress-pct" class="text-stone-400 tabular-nums text-xs">0%</span>
+            <span id="progress-step" class="text-stone-700 font-medium">Connecting...</span>
+            <span id="progress-pct" class="text-stone-500 tabular-nums text-xs">0%</span>
           </div>
           <div class="h-1.5 bg-stone-100 rounded-full overflow-hidden">
             <div id="progress-bar" class="h-full bg-sky-500 rounded-full transition-all duration-500" style="width:0%"></div>
           </div>
-          <p id="progress-detail" class="mt-1.5 text-xs text-stone-400"></p>
+          <p id="progress-detail" class="mt-1.5 text-xs text-stone-500"></p>
         </div>
 
-        <!-- Status message (always visible, shows ready state) -->
-        <div id="status-msg" class="mt-4 text-sm rounded-lg px-3 py-2 text-stone-400 bg-stone-50 ring-1 ring-stone-200"></div>
+        <!-- Status message (hidden until content appears) -->
+        <div id="status-msg" class="hidden mt-4 text-sm rounded-lg px-3 py-2"></div>
 
         <!-- Help -->
-        <p class="mt-5 text-xs text-stone-400 leading-relaxed">
-          WebSerial works on <strong class="text-stone-500">Chrome</strong> or <strong class="text-stone-500">Edge</strong> desktop.
-          On mobile, download the .bin and place it on your SD card root as <code class="text-[11px] bg-stone-100 rounded px-1 py-0.5 font-mono text-stone-500">update.bin</code>.
+        <p class="mt-5 text-xs text-stone-500 leading-relaxed">
+          WebSerial works on <strong class="text-stone-700">Chrome</strong> or <strong class="text-stone-700">Edge</strong> desktop.
+          On mobile, download the .bin and place it on your SD card root as <code class="text-[11px] bg-stone-100 rounded px-1 py-0.5 font-mono text-stone-700">update.bin</code>.
         </p>
       </div>
     </section>
 
+    <!-- AirBook iOS Companion -->
+    <section class="mt-5 w-full">
+      <a href="https://github.com/Yoddikko/Airbook-for-CrossPoint" target="_blank" rel="noopener"
+        class="group flex items-center gap-4 rounded-2xl bg-stone-900 hover:bg-stone-800 transition-all duration-150 p-5 sm:p-6 shadow-[0_2px_30px_-8px_rgba(15,23,42,0.18)] ring-1 ring-stone-950/10 no-underline">
+        <span class="flex shrink-0 size-11 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 group-hover:bg-white/15 transition-colors">
+          <!-- Apple logo (white) -->
+          <svg class="size-6 text-white" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
+            <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
+          </svg>
+        </span>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium tracking-wider uppercase text-sky-300/80">iOS Companion App</p>
+          <p class="mt-0.5 text-base font-semibold text-white">Install AirBook on iOS</p>
+          <p class="mt-0.5 text-xs text-stone-400 leading-snug">Send ebooks from iPhone or iPad to your reader over BLE. <span class="text-stone-300">View on GitHub</span> &rarr;</p>
+        </div>
+        <svg class="size-5 shrink-0 text-stone-500 group-hover:text-stone-300 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+        </svg>
+      </a>
+    </section>
+
     <!-- Footer -->
-    <footer class="mt-10 text-sm text-stone-400 space-y-2.5">
+    <footer class="mt-10 text-sm space-y-2.5">
       <div class="flex items-center justify-center gap-x-5 gap-y-1 flex-wrap">
-        <a href="https://github.com/Yoddikko/crosspoint-reader" target="_blank" rel="noopener" class="text-stone-500 hover:text-stone-700 underline underline-offset-2 transition-colors">Fork on GitHub</a>
-        <a href="https://github.com/Yoddikko/Airbook-for-CrossPoint" target="_blank" rel="noopener" class="text-stone-500 hover:text-stone-700 underline underline-offset-2 transition-colors">AirBook iOS App</a>
-        <a href="https://github.com/crosspoint-reader/crosspoint-reader" target="_blank" rel="noopener" class="text-stone-500 hover:text-stone-700 underline underline-offset-2 transition-colors">Upstream Project</a>
+        <a href="https://github.com/Yoddikko/crosspoint-reader" target="_blank" rel="noopener" class="text-stone-600 hover:text-stone-900 underline underline-offset-4 decoration-stone-300 hover:decoration-stone-500 transition-colors">Fork on GitHub</a>
+        <a href="https://github.com/crosspoint-reader/crosspoint-reader" target="_blank" rel="noopener" class="text-stone-600 hover:text-stone-900 underline underline-offset-4 decoration-stone-300 hover:decoration-stone-500 transition-colors">Upstream Project</a>
       </div>
-      <p class="text-xs text-stone-300 mt-4">
+      <p class="text-xs text-stone-400 mt-4">
         CrossPoint Reader is open-source e-reader firmware&thinsp;&mdash;&thinsp;community-built, free forever. Not affiliated with Xteink.
       </p>
     </footer>
@@ -137,7 +177,7 @@
 
     let CrossPointFlasher, fetchReleaseFirmware, downloadBlob;
     try {
-      const mod = await import('/js/flasher.js');
+      const mod = await import('./js/flasher.js');
       CrossPointFlasher = mod.CrossPointFlasher;
       fetchReleaseFirmware = mod.fetchReleaseFirmware;
       downloadBlob = mod.downloadBlob;
@@ -167,39 +207,14 @@
     const TOTAL_STEPS = 6;
 
     // Confirm JS loaded
-    statusMsg.innerHTML = 'Ready &mdash; connect your device via USB and click <strong>Flash with WebSerial</strong>.';
+    showStatus('Ready &mdash; connect your device via USB and click <strong>Flash with WebSerial</strong>.', 'info');
 
-    // --- Release freshness badge ---
-    (async function loadReleaseBadge() {
-      const el = document.getElementById('release-badge');
-      try {
-        const relRes = await fetch(
-          'https://api.github.com/repos/Yoddikko/crosspoint-reader/releases/latest',
-          { headers: { Accept: 'application/vnd.github.v3+json' } }
-        );
-        if (!relRes.ok) throw new Error(`Release API ${relRes.status}`);
-        const release = await relRes.json();
-        const tag = release.tag_name;
-        const published = new Date(release.published_at).toLocaleDateString();
-
-        const cmpRes = await fetch(
-          `https://api.github.com/repos/Yoddikko/crosspoint-reader/compare/${tag}...master`,
-          { headers: { Accept: 'application/vnd.github.v3+json' } }
-        );
-        if (!cmpRes.ok) throw new Error(`Compare API ${cmpRes.status}`);
-        const cmp = await cmpRes.json();
-        const ahead = cmp.ahead_by || 0;
-
-        if (ahead === 0) {
-          el.innerHTML = `<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Release <code class="text-[11px] bg-emerald-100/50 rounded px-1 font-mono">${tag}</code> &middot; ${published} &middot; current</span>`;
-        } else {
-          el.innerHTML = `<a href="https://github.com/Yoddikko/crosspoint-reader/compare/${tag}...master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 hover:bg-amber-100 transition-colors">Release <code class="text-[11px] bg-amber-100/50 rounded px-1 font-mono">${tag}</code> &middot; ${published} &middot; ${ahead} commit${ahead > 1 ? 's' : ''} behind master</a>`;
-        }
-      } catch (err) {
-        console.error('Release badge:', err);
-        el.innerHTML = '';
-      }
-    })();
+    // SVG icons used in badges
+    const ICONS = {
+      check: '<svg class="size-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.704 5.296a1 1 0 010 1.408l-7.5 7.5a1 1 0 01-1.408 0l-3.5-3.5a1 1 0 011.408-1.408L8.5 12.092l6.796-6.796a1 1 0 011.408 0z" clip-rule="evenodd"/></svg>',
+      sync: '<svg class="size-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.42l-.31-.31A7 7 0 003.239 8.175a.75.75 0 101.448.39A5.5 5.5 0 0113.89 6.1l.311.31h-2.432a.75.75 0 100 1.5h4.243a.75.75 0 00.53-.219z" clip-rule="evenodd"/></svg>',
+      tag: '<svg class="size-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.5 3A2.5 2.5 0 003 5.5v2.879a2.5 2.5 0 00.732 1.767l6.5 6.5a2.5 2.5 0 003.536 0l2.878-2.878a2.5 2.5 0 000-3.536l-6.5-6.5A2.5 2.5 0 008.38 3H5.5zM6 7a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>',
+    };
 
     // --- Upstream sync badge ---
     (async function loadUpstreamBadge() {
@@ -214,15 +229,51 @@
         const behind = data.behind_by || 0;
         const ahead = data.ahead_by || 0;
         if (behind === 0 && ahead === 0) {
-          el.innerHTML = '<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">In sync with upstream</span>';
+          el.innerHTML = `<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">${ICONS.check} In sync with upstream <code class="text-[11px] bg-emerald-100/60 rounded px-1 font-mono">master</code></span>`;
           return;
         }
         const parts = [];
-        if (behind > 0) parts.push(`${behind} commit${behind > 1 ? 's' : ''} behind`);
-        if (ahead > 0) parts.push(`${ahead} commit${ahead > 1 ? 's' : ''} ahead`);
-        el.innerHTML = `<a href="https://github.com/crosspoint-reader/crosspoint-reader/compare/master...Yoddikko:crosspoint-reader:master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 hover:bg-amber-100 transition-colors">${parts.join(', ')} upstream</a>`;
+        if (behind > 0) parts.push(`${behind} behind`);
+        if (ahead > 0) parts.push(`${ahead} ahead`);
+        el.innerHTML = `<a href="https://github.com/crosspoint-reader/crosspoint-reader/compare/master...Yoddikko:crosspoint-reader:master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 hover:bg-amber-100 transition-colors">${ICONS.sync} ${parts.join(' &middot; ')} <span class="text-amber-600/80">vs upstream</span></a>`;
       } catch (err) {
         console.error('Upstream badge:', err);
+        el.innerHTML = `<span class="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-500 ring-1 ring-inset ring-stone-200">Upstream status unavailable</span>`;
+      }
+    })();
+
+    // --- Release freshness badge ---
+    (async function loadReleaseBadge() {
+      const el = document.getElementById('release-badge');
+      const tagPill = document.getElementById('firmware-tag');
+      try {
+        const relRes = await fetch(
+          'https://api.github.com/repos/Yoddikko/crosspoint-reader/releases/latest',
+          { headers: { Accept: 'application/vnd.github.v3+json' } }
+        );
+        if (!relRes.ok) throw new Error(`Release API ${relRes.status}`);
+        const release = await relRes.json();
+        const tag = release.tag_name;
+        const published = new Date(release.published_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+        tagPill.textContent = tag;
+        tagPill.classList.remove('hidden');
+
+        const cmpRes = await fetch(
+          `https://api.github.com/repos/Yoddikko/crosspoint-reader/compare/${tag}...master`,
+          { headers: { Accept: 'application/vnd.github.v3+json' } }
+        );
+        if (!cmpRes.ok) throw new Error(`Compare API ${cmpRes.status}`);
+        const cmp = await cmpRes.json();
+        const ahead = cmp.ahead_by || 0;
+
+        if (ahead === 0) {
+          el.innerHTML = `<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">${ICONS.tag} ${tag} <span class="text-emerald-600/70">&middot; ${published} &middot; latest</span></span>`;
+        } else {
+          el.innerHTML = `<a href="https://github.com/Yoddikko/crosspoint-reader/compare/${tag}...master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20 hover:bg-sky-100 transition-colors">${ICONS.tag} ${tag} <span class="text-sky-600/80">&middot; ${published} &middot; ${ahead} ahead on master</span></a>`;
+        }
+      } catch (err) {
+        console.error('Release badge:', err);
         el.innerHTML = '';
       }
     })();
@@ -250,6 +301,7 @@
       };
       statusMsg.className = `mt-4 text-sm rounded-lg px-3 py-2 ${colors[type] || colors.info}`;
       statusMsg.innerHTML = text;
+      statusMsg.classList.remove('hidden');
     }
 
     function setProgress(step, pct, detail = '') {
