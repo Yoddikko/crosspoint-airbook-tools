@@ -8,157 +8,259 @@
   <meta property="og:title" content="CrossPoint + AirBook">
   <meta property="og:description" content="Web flasher for CrossPoint + AirBook. Send ebooks wirelessly from iPhone to your e-reader over BLE.">
   <meta property="og:type" content="website">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F9F7F4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171717" media="(prefers-color-scheme: dark)">
   <link rel="icon" type="image/png" href="favicon.png">
+
+  <!-- Theme bootstrap: applies the .dark class before paint so the first
+       frame doesn't flash light. Reads localStorage then prefers-color-
+       scheme. Mirrors the iOS app's paperBackground/paperInk swap. -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (stored === 'dark' || (!stored && prefersDark)) {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,500;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
+          // Paper-ink palette mirrors the AirBook iOS app's Color extensions
+          // (see ContentView.swift). Values resolve through CSS variables
+          // below so the same class works in both light and dark mode.
+          colors: {
+            paper: {
+              bg:    'var(--paper-bg)',
+              elev:  'var(--paper-elev)',
+              ink:   'var(--paper-ink)',
+              rule:  'var(--paper-rule)',
+              error: 'var(--paper-error)',
+            },
+          },
           fontFamily: {
-            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            serif: ['"Source Serif 4"', 'Iowan Old Style', 'Georgia', 'Cambria', 'serif'],
+            mono:  ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
           },
         },
       },
     }
   </script>
+
   <style>
-    .air { font-weight: 200; }
-    /* Soft radial highlight behind the hero */
+    :root {
+      --paper-bg:    #F9F7F4;
+      --paper-elev:  #FEFCF8;
+      --paper-ink:   #14110E;
+      --paper-rule:  #807A72;
+      --paper-error: #7A4708;
+    }
+    html.dark {
+      --paper-bg:    #171717;
+      --paper-elev:  #1F1E1C;
+      --paper-ink:   #E8E5DF;
+      --paper-rule:  #7A7470;
+      --paper-error: #9E7028;
+    }
+
+    /* Newspaper masthead lockup — mixed-weight wordmark matches the iOS
+       masthead exactly: "Air" light / "Book" bold, system serif. */
+    .wordmark { font-family: 'Source Serif 4', Georgia, serif; letter-spacing: -0.01em; }
+    .wordmark .air  { font-weight: 300; }
+    .wordmark .book { font-weight: 700; }
+
+    /* Hairline rule used as section divider, 0.5px on retina via outline
+       trick — sharper than border on hi-DPI. */
+    .paper-rule { background: var(--paper-rule); opacity: 0.35; height: 0.5px; }
+
+    body {
+      background: var(--paper-bg);
+      color: var(--paper-ink);
+      font-family: 'Source Serif 4', Georgia, serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Focus visibility — paper-ink ring instead of OS blue. */
+    button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+      outline: 1.5px solid var(--paper-ink);
+      outline-offset: 2px;
+    }
+
+    /* Subtle film-grain in the corners, picked up from the iOS detail view
+       — pure CSS, no images. Helps the page feel like paper instead of a
+       flat canvas without competing with the content. */
     body::before {
       content: '';
       position: fixed;
       inset: 0;
       pointer-events: none;
-      background:
-        radial-gradient(ellipse 60% 50% at 50% 0%, rgba(186, 230, 253, 0.35), transparent 70%),
-        radial-gradient(ellipse 70% 50% at 50% 100%, rgba(254, 240, 220, 0.5), transparent 60%);
       z-index: -1;
-    }
-    /* Focus rings */
-    button:focus-visible, a:focus-visible {
-      outline: 2px solid rgb(14 165 233);
-      outline-offset: 2px;
-      border-radius: 0.75rem;
+      background:
+        radial-gradient(ellipse 60% 40% at 50% 0%, color-mix(in srgb, var(--paper-ink) 4%, transparent), transparent 70%),
+        radial-gradient(ellipse 70% 45% at 50% 100%, color-mix(in srgb, var(--paper-ink) 3%, transparent), transparent 65%);
     }
   </style>
 </head>
-<body class="bg-stone-50 min-h-screen flex flex-col items-center justify-center px-5 py-16 selection:bg-sky-100 antialiased">
+<body class="min-h-screen flex flex-col items-center justify-center px-5 py-16 selection:bg-paper-ink/15">
 
-  <!-- JS error banner (hidden unless a fatal error occurs) -->
-  <div id="js-error-banner" class="hidden fixed top-0 left-0 right-0 z-50 bg-red-600 px-4 py-3 text-white text-sm text-center font-medium shadow-lg"></div>
+  <!-- JS error banner -->
+  <div id="js-error-banner" class="hidden fixed top-0 left-0 right-0 z-50 bg-paper-error px-4 py-3 text-paper-bg text-sm text-center font-medium"></div>
 
-  <main class="w-full max-w-lg mx-auto text-center">
+  <!-- Theme toggle, top-right. Same paper-ink rectangle treatment as the
+       iOS app's compact buttons. -->
+  <button id="theme-toggle"
+          type="button"
+          aria-label="Toggle dark mode"
+          class="fixed top-5 right-5 z-40 w-9 h-9 flex items-center justify-center text-paper-ink hover:bg-paper-ink/5 transition-colors"
+          style="border: 0.5px solid var(--paper-rule);">
+    <svg id="theme-icon-sun" class="size-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+    </svg>
+    <svg id="theme-icon-moon" class="size-4 block dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  </button>
 
-    <!-- Hero -->
-    <header>
-      <p class="text-stone-500 text-xs font-semibold tracking-[0.2em] uppercase mb-6">CrossPoint Reader Fork</p>
-      <h1 class="text-5xl sm:text-6xl leading-[1.1] tracking-tight">
-        <span class="font-light text-stone-800">CrossPoint</span>
-        <span class="font-light text-stone-400">+</span>
+  <main class="w-full max-w-lg mx-auto">
+
+    <!-- Masthead -->
+    <header class="text-center">
+      <p class="font-mono text-[11px] tracking-[0.22em] uppercase text-paper-rule">CrossPoint Reader Fork</p>
+
+      <h1 class="wordmark mt-4 text-[44px] sm:text-[56px] leading-[1.05] text-paper-ink">
+        <span class="font-light">CrossPoint</span>
+        <span class="font-light text-paper-rule">+</span>
         <br>
-        <span class="air text-sky-500">Air</span><span class="font-medium text-stone-800">Book</span>
+        <span class="air">Air</span><span class="book">Book</span>
       </h1>
-      <p class="mt-6 text-stone-600 text-base leading-relaxed max-w-sm mx-auto">
-        Adds <strong class="text-stone-800">AirBook for CrossPoint</strong> support&thinsp;&mdash;&thinsp;the iOS companion app.
+
+      <div class="paper-rule mt-8 mx-auto" style="max-width: 220px"></div>
+
+      <p class="mt-5 font-serif text-[15px] leading-relaxed text-paper-ink max-w-sm mx-auto">
+        Adds <strong class="font-semibold">AirBook for CrossPoint</strong> support — the iOS companion app.
         Send ebooks from iPhone or iPad to your e-reader over Bluetooth Low Energy.
       </p>
 
       <!-- Status badges -->
-      <div class="mt-6 flex flex-col items-center gap-2">
+      <div class="mt-6 flex flex-col items-center gap-1.5">
         <div id="upstream-badge">
-          <span class="inline-block h-6 w-44 rounded-full bg-stone-100 animate-pulse"></span>
+          <span class="inline-block h-5 w-44 bg-paper-ink/5"></span>
         </div>
         <div id="release-badge"></div>
       </div>
     </header>
 
-    <!-- Action Card -->
+    <!-- Action panel -->
     <section class="mt-10 w-full">
-      <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-[0_2px_30px_-8px_rgba(15,23,42,0.08)] ring-1 ring-stone-950/[0.06] p-6 sm:p-8 text-left">
+      <div class="bg-paper-elev p-6 sm:p-8 text-left" style="border: 0.5px solid color-mix(in srgb, var(--paper-ink) 18%, transparent);">
         <div class="flex items-baseline justify-between gap-3">
-          <h2 class="text-lg font-semibold text-stone-800">Install Firmware</h2>
-          <span id="firmware-tag" class="hidden text-[11px] font-mono text-stone-500 bg-stone-100 rounded-md px-1.5 py-0.5"></span>
+          <h2 class="font-serif text-[18px] font-bold text-paper-ink">Install firmware</h2>
+          <span id="firmware-tag" class="hidden font-mono text-[11px] text-paper-rule"></span>
         </div>
-        <p class="mt-1 text-sm text-stone-500">Flash the latest build from your browser, or download the <code class="text-[12px] bg-stone-100 rounded px-1 font-mono text-stone-600">.bin</code> for SD card installation.</p>
+        <p class="mt-1 font-serif text-[13px] text-paper-rule">
+          Flash the latest build from your browser, or download the
+          <code class="font-mono text-[11px] text-paper-ink" style="border: 0.5px solid var(--paper-rule); padding: 1px 4px;">.bin</code>
+          for SD-card installation.
+        </p>
 
-        <!-- Flash button -->
+        <!-- Flash button (primary, paper-ink rectangle) -->
         <button id="flash-btn" type="button"
-          class="mt-5 w-full inline-flex items-center justify-center gap-2.5 rounded-xl bg-sky-500 px-5 py-3.5 text-sm font-semibold text-white hover:bg-sky-600 active:bg-sky-700 transition-all duration-150 hover:-translate-y-px hover:shadow-md disabled:bg-stone-300 disabled:text-stone-500 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none shadow-sm">
-          <svg id="flash-icon" class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+          class="mt-6 w-full inline-flex items-center justify-center gap-2.5 bg-paper-ink px-5 py-3.5 font-serif text-[15px] font-semibold text-paper-bg hover:opacity-90 active:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
+          <svg id="flash-icon" class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
           </svg>
           <span id="flash-label">Flash with WebSerial</span>
           <svg id="flash-spinner" class="hidden size-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            <circle class="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+            <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
           </svg>
         </button>
 
-        <!-- SD Download button -->
+        <!-- SD download button (ghost) -->
         <button id="download-btn" type="button"
-          class="mt-3 w-full inline-flex items-center justify-center gap-2.5 rounded-xl border border-stone-200 bg-white px-5 py-3 text-sm font-medium text-stone-700 hover:bg-stone-50 hover:border-stone-300 active:bg-stone-100 transition-all duration-150 disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed">
-          <svg id="dl-icon" class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          class="mt-2.5 w-full inline-flex items-center justify-center gap-2.5 px-5 py-3 font-serif text-[14px] text-paper-ink hover:bg-paper-ink/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style="border: 0.5px solid var(--paper-rule);">
+          <svg id="dl-icon" class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.4" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
           </svg>
           <span id="dl-label">Download .bin for SD card</span>
           <svg id="dl-spinner" class="hidden size-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            <circle class="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+            <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
           </svg>
         </button>
 
         <!-- Progress -->
-        <div id="progress-area" class="hidden mt-5">
-          <div class="flex items-center justify-between text-sm mb-2">
-            <span id="progress-step" class="text-stone-700 font-medium">Connecting...</span>
-            <span id="progress-pct" class="text-stone-500 tabular-nums text-xs">0%</span>
+        <div id="progress-area" class="hidden mt-6">
+          <div class="flex items-center justify-between text-[12px] mb-2 font-mono">
+            <span id="progress-step" class="text-paper-ink">Connecting…</span>
+            <span id="progress-pct" class="text-paper-rule tabular-nums">0%</span>
           </div>
-          <div class="h-1.5 bg-stone-100 rounded-full overflow-hidden">
-            <div id="progress-bar" class="h-full bg-sky-500 rounded-full transition-all duration-500" style="width:0%"></div>
+          <div class="h-[3px] bg-paper-ink/10 overflow-hidden">
+            <div id="progress-bar" class="h-full bg-paper-ink transition-all duration-300" style="width:0%"></div>
           </div>
-          <p id="progress-detail" class="mt-1.5 text-xs text-stone-500"></p>
+          <p id="progress-detail" class="mt-1.5 font-mono text-[11px] text-paper-rule"></p>
         </div>
 
-        <!-- Status message (hidden until content appears) -->
-        <div id="status-msg" class="hidden mt-4 text-sm rounded-lg px-3 py-2"></div>
+        <!-- Status message -->
+        <div id="status-msg" class="hidden mt-5 font-serif text-[13px] px-3 py-2.5"></div>
 
         <!-- Help -->
-        <p class="mt-5 text-xs text-stone-500 leading-relaxed">
-          WebSerial works on <strong class="text-stone-700">Chrome</strong> or <strong class="text-stone-700">Edge</strong> desktop.
-          On mobile, download the .bin and place it on your SD card root as <code class="text-[11px] bg-stone-100 rounded px-1 py-0.5 font-mono text-stone-700">update.bin</code>.
+        <p class="mt-5 font-serif text-[12px] leading-relaxed text-paper-rule">
+          WebSerial works on <strong class="font-semibold text-paper-ink">Chrome</strong> or
+          <strong class="font-semibold text-paper-ink">Edge</strong> desktop.
+          On mobile, download the
+          <code class="font-mono text-[11px] text-paper-ink" style="border: 0.5px solid var(--paper-rule); padding: 1px 4px;">.bin</code>
+          and place it on your SD card root as
+          <code class="font-mono text-[11px] text-paper-ink" style="border: 0.5px solid var(--paper-rule); padding: 1px 4px;">update.bin</code>.
         </p>
       </div>
     </section>
 
-    <!-- AirBook iOS Companion -->
+    <!-- AirBook iOS companion -->
     <section class="mt-5 w-full">
       <a href="https://github.com/AirBook-for-CrossPoint/Airbook-iOS-for-CrossPoint" target="_blank" rel="noopener"
-        class="group flex items-center gap-4 rounded-2xl bg-stone-900 hover:bg-stone-800 transition-all duration-150 p-5 sm:p-6 shadow-[0_2px_30px_-8px_rgba(15,23,42,0.18)] ring-1 ring-stone-950/10 no-underline">
-        <span class="flex shrink-0 size-11 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 group-hover:bg-white/15 transition-colors">
-          <!-- Apple logo (white) -->
-          <svg class="size-6 text-white" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
+        class="group flex items-center gap-4 bg-paper-ink p-5 sm:p-6 no-underline hover:opacity-95 transition-opacity"
+        style="border: 0.5px solid color-mix(in srgb, var(--paper-ink) 30%, transparent);">
+        <span class="flex shrink-0 size-11 items-center justify-center" style="border: 0.5px solid color-mix(in srgb, var(--paper-bg) 25%, transparent);">
+          <svg class="size-6 text-paper-bg" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
             <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
           </svg>
         </span>
         <div class="flex-1 min-w-0">
-          <p class="text-xs font-medium tracking-wider uppercase text-sky-300/80">iOS Companion App</p>
-          <p class="mt-0.5 text-base font-semibold text-white">Install AirBook on iOS</p>
-          <p class="mt-0.5 text-xs text-stone-400 leading-snug">Send ebooks from iPhone or iPad to your reader over BLE. <span class="text-stone-300">View on GitHub</span> &rarr;</p>
+          <p class="font-mono text-[10px] tracking-[0.2em] uppercase text-paper-bg/60">iOS Companion App</p>
+          <p class="mt-1 font-serif text-[15px] font-semibold text-paper-bg">Install AirBook on iOS</p>
+          <p class="mt-0.5 font-serif text-[12px] text-paper-bg/60 leading-snug">
+            Send ebooks from iPhone or iPad to your reader over BLE.
+            <span class="text-paper-bg/80">View on GitHub →</span>
+          </p>
         </div>
-        <svg class="size-5 shrink-0 text-stone-500 group-hover:text-stone-300 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+        <svg class="size-5 shrink-0 text-paper-bg/50 group-hover:text-paper-bg group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke-width="1.4" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
         </svg>
       </a>
     </section>
 
-    <!-- Support -->
+    <!-- Ko-fi keeps its brand red — single intentional accent, otherwise
+         the whole page is paper-ink monochrome. -->
     <section class="mt-10 flex justify-center">
       <a href="https://ko-fi.com/yodddd" target="_blank" rel="noopener"
-         class="inline-flex items-center gap-2 rounded-full bg-[#ff5e5b] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#e94e4b] transition-colors">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
+         class="inline-flex items-center gap-2 px-5 py-2.5 font-serif text-[13px] font-semibold text-white hover:opacity-90 transition-opacity"
+         style="background:#ff5e5b;">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true">
           <path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.363.407 0 0 1.565-1.782 3.468-.963 1.904.82 1.832 3.011.723 4.311zm6.173.478c-.928.116-1.682.028-1.682.028V7.284h1.77s1.971.551 1.971 2.638c0 1.913-.985 2.667-2.059 3.015z"/>
         </svg>
         Support me on Ko-fi
@@ -166,20 +268,32 @@
     </section>
 
     <!-- Footer -->
-    <footer class="mt-8 text-sm space-y-2.5">
-      <div class="flex items-center justify-center gap-x-5 gap-y-1 flex-wrap">
-        <a href="https://github.com/AirBook-for-CrossPoint/crosspoint-reader-with-aribook" target="_blank" rel="noopener" class="text-stone-600 hover:text-stone-900 underline underline-offset-4 decoration-stone-300 hover:decoration-stone-500 transition-colors">Fork on GitHub</a>
-        <a href="https://github.com/crosspoint-reader/crosspoint-reader" target="_blank" rel="noopener" class="text-stone-600 hover:text-stone-900 underline underline-offset-4 decoration-stone-300 hover:decoration-stone-500 transition-colors">Upstream Project</a>
+    <footer class="mt-10 font-serif text-[13px] text-center space-y-3">
+      <div class="paper-rule mx-auto" style="max-width: 320px"></div>
+      <div class="flex items-center justify-center gap-x-5 gap-y-1 flex-wrap pt-3">
+        <a href="https://github.com/AirBook-for-CrossPoint/crosspoint-reader-with-aribook" target="_blank" rel="noopener" class="text-paper-ink hover:opacity-70 transition-opacity underline underline-offset-4 decoration-paper-rule/40">Fork on GitHub</a>
+        <a href="https://github.com/crosspoint-reader/crosspoint-reader" target="_blank" rel="noopener" class="text-paper-ink hover:opacity-70 transition-opacity underline underline-offset-4 decoration-paper-rule/40">Upstream Project</a>
       </div>
-      <p class="text-xs text-stone-400 mt-4">
-        CrossPoint Reader is open-source e-reader firmware&thinsp;&mdash;&thinsp;community-built, free forever. Not affiliated with Xteink.
+      <p class="font-mono text-[10px] tracking-wide text-paper-rule mt-3">
+        CrossPoint Reader is open-source e-reader firmware — community-built, free forever. Not affiliated with Xteink.
       </p>
     </footer>
 
   </main>
 
+  <script>
+    // --- Theme toggle ---
+    document.getElementById('theme-toggle').addEventListener('click', function () {
+      var html = document.documentElement;
+      html.classList.toggle('dark');
+      try {
+        localStorage.setItem('theme', html.classList.contains('dark') ? 'dark' : 'light');
+      } catch (e) {}
+    });
+  </script>
+
   <script type="module">
-    // Global error trap — shows errors visibly on the page
+    // Global error trap
     const errBanner = document.getElementById('js-error-banner');
     window.onerror = (msg, src, line) => {
       errBanner.classList.remove('hidden');
@@ -224,14 +338,13 @@
     let currentStepIdx = 0;
     const TOTAL_STEPS = 6;
 
-    // Confirm JS loaded
-    showStatus('Ready &mdash; connect your device via USB and click <strong>Flash with WebSerial</strong>.', 'info');
+    showStatus('Ready — connect your device via USB and tap <strong>Flash with WebSerial</strong>.', 'info');
 
-    // SVG icons used in badges
+    // Badge SVG icons — thin-stroke to match the paper aesthetic.
     const ICONS = {
-      check: '<svg class="size-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.704 5.296a1 1 0 010 1.408l-7.5 7.5a1 1 0 01-1.408 0l-3.5-3.5a1 1 0 011.408-1.408L8.5 12.092l6.796-6.796a1 1 0 011.408 0z" clip-rule="evenodd"/></svg>',
-      sync: '<svg class="size-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.42l-.31-.31A7 7 0 003.239 8.175a.75.75 0 101.448.39A5.5 5.5 0 0113.89 6.1l.311.31h-2.432a.75.75 0 100 1.5h4.243a.75.75 0 00.53-.219z" clip-rule="evenodd"/></svg>',
-      tag: '<svg class="size-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.5 3A2.5 2.5 0 003 5.5v2.879a2.5 2.5 0 00.732 1.767l6.5 6.5a2.5 2.5 0 003.536 0l2.878-2.878a2.5 2.5 0 000-3.536l-6.5-6.5A2.5 2.5 0 008.38 3H5.5zM6 7a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>',
+      check: '<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      sync:  '<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+      tag:   '<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
     };
 
     // --- Upstream sync badge ---
@@ -246,13 +359,13 @@
         const data = await res.json();
         const behind = data.behind_by || 0;
         if (behind === 0) {
-          el.innerHTML = `<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">${ICONS.check} In sync with upstream <code class="text-[11px] bg-emerald-100/60 rounded px-1 font-mono">master</code></span>`;
+          el.innerHTML = `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-paper-ink" style="border: 0.5px solid var(--paper-ink);">${ICONS.check} In sync with upstream</span>`;
           return;
         }
-        el.innerHTML = `<a href="https://github.com/crosspoint-reader/crosspoint-reader/compare/master...AirBook-for-CrossPoint:crosspoint-reader-with-aribook:master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 hover:bg-amber-100 transition-colors">${ICONS.sync} ${behind} behind upstream</a>`;
+        el.innerHTML = `<a href="https://github.com/crosspoint-reader/crosspoint-reader/compare/master...AirBook-for-CrossPoint:crosspoint-reader-with-aribook:master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-paper-error hover:opacity-80 transition-opacity" style="border: 0.5px solid var(--paper-error);">${ICONS.sync} ${behind} behind upstream</a>`;
       } catch (err) {
         console.error('Upstream badge:', err);
-        el.innerHTML = `<span class="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-500 ring-1 ring-inset ring-stone-200">Upstream status unavailable</span>`;
+        el.innerHTML = `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-paper-rule" style="border: 0.5px solid var(--paper-rule);">Upstream status unavailable</span>`;
       }
     })();
 
@@ -282,9 +395,9 @@
         const ahead = cmp.ahead_by || 0;
 
         if (ahead === 0) {
-          el.innerHTML = `<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">${ICONS.tag} ${tag} <span class="text-emerald-600/70">&middot; ${published} &middot; latest</span></span>`;
+          el.innerHTML = `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-paper-ink" style="border: 0.5px solid var(--paper-ink);">${ICONS.tag} ${tag} · ${published}</span>`;
         } else {
-          el.innerHTML = `<a href="https://github.com/AirBook-for-CrossPoint/crosspoint-reader-with-aribook/compare/${tag}...master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/20 hover:bg-sky-100 transition-colors">${ICONS.tag} ${tag} <span class="text-sky-600/80">&middot; ${published} &middot; ${ahead} ahead on master</span></a>`;
+          el.innerHTML = `<a href="https://github.com/AirBook-for-CrossPoint/crosspoint-reader-with-aribook/compare/${tag}...master" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-paper-rule hover:opacity-80 transition-opacity" style="border: 0.5px solid var(--paper-rule);">${ICONS.tag} ${tag} · ${published} · ${ahead} ahead</a>`;
         }
       } catch (err) {
         console.error('Release badge:', err);
@@ -300,7 +413,7 @@
       label.textContent = text;
     }
 
-    function resetButton(btn, label, icon, spinner, originalText, originalIconClass) {
+    function resetButton(btn, label, icon, spinner, originalText) {
       btn.disabled = false;
       icon.classList.remove('hidden');
       spinner.classList.add('hidden');
@@ -308,12 +421,20 @@
     }
 
     function showStatus(text, type = 'info') {
-      const colors = {
-        info: 'text-stone-700 bg-stone-50 ring-1 ring-stone-200',
-        success: 'text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200',
-        error: 'text-red-700 bg-red-50 ring-1 ring-red-200',
+      // Paper aesthetic: outline-only boxes, no fill chroma. Error uses
+      // the muted-amber paper-error token (same as iOS).
+      const styles = {
+        info:    'text-paper-ink',
+        success: 'text-paper-ink',
+        error:   'text-paper-error',
       };
-      statusMsg.className = `mt-4 text-sm rounded-lg px-3 py-2 ${colors[type] || colors.info}`;
+      const border = {
+        info:    'var(--paper-rule)',
+        success: 'var(--paper-ink)',
+        error:   'var(--paper-error)',
+      };
+      statusMsg.className = `mt-5 font-serif text-[13px] px-3 py-2.5 ${styles[type] || styles.info}`;
+      statusMsg.style.border = `0.5px solid ${border[type] || border.info}`;
       statusMsg.innerHTML = text;
       statusMsg.classList.remove('hidden');
     }
@@ -335,18 +456,18 @@
     // --- Flash ---
     flashBtn.addEventListener('click', async () => {
       if (flashBtn.disabled) return;
-      setButtonLoading(flashBtn, flashLabel, flashIcon, flashSpinner, 'Connecting...');
+      setButtonLoading(flashBtn, flashLabel, flashIcon, flashSpinner, 'Connecting…');
       downloadBtn.disabled = true;
       hideProgress();
       currentStepIdx = 0;
 
       let flasher = null;
       try {
-        showStatus('Fetching latest firmware from GitHub Releases&hellip;', 'info');
+        showStatus('Fetching latest firmware from GitHub Releases…', 'info');
         const firmware = await fetchReleaseFirmware();
         flashLabel.textContent = 'Downloaded firmware';
 
-        showStatus('Select <strong>ESP32-S3 USB Serial</strong> from the port list&hellip;', 'info');
+        showStatus('Select <strong>ESP32-S3 USB Serial</strong> from the port list…', 'info');
         const port = await CrossPointFlasher.requestPort();
 
         flasher = new CrossPointFlasher(port);
@@ -376,9 +497,9 @@
 
         showStatus(
           'Firmware flashed successfully. Your device is now running <strong>CrossPoint + AirBook</strong>.' +
-          '<div class="mt-3 pt-3 border-t border-emerald-200 text-stone-700">' +
-            '<div class="font-semibold text-stone-900 text-sm">After flashing</div>' +
-            '<ol class="mt-1.5 ml-4 list-decimal space-y-1 text-[13px] leading-snug">' +
+          '<div class="mt-3 pt-3" style="border-top: 0.5px solid var(--paper-rule);">' +
+            '<div class="font-serif font-bold text-paper-ink text-[13px]">After flashing</div>' +
+            '<ol class="mt-1.5 ml-4 list-decimal space-y-1 font-serif text-[12px] leading-snug text-paper-ink">' +
               '<li><strong>Unplug</strong> the USB cable and <strong>plug it back in</strong>. Don\'t press the Reset button.</li>' +
               '<li>On the device, open <strong>AirBook sync</strong> from the home menu.</li>' +
               '<li>Open the AirBook iOS app and tap the Sync icon.</li>' +
@@ -401,17 +522,17 @@
       }
     });
 
-    // --- SD Download ---
+    // --- SD download ---
     downloadBtn.addEventListener('click', async () => {
       if (downloadBtn.disabled) return;
-      setButtonLoading(downloadBtn, dlLabel, dlIcon, dlSpinner, 'Downloading...');
+      setButtonLoading(downloadBtn, dlLabel, dlIcon, dlSpinner, 'Downloading…');
       flashBtn.disabled = true;
 
       try {
-        showStatus('Downloading firmware from GitHub Releases&hellip;', 'info');
+        showStatus('Downloading firmware from GitHub Releases…', 'info');
         const firmware = await fetchReleaseFirmware();
         downloadBlob(firmware, 'update.bin');
-        showStatus('Saved as <code class="text-[11px] bg-emerald-100 rounded px-1 py-0.5 font-mono">update.bin</code> &mdash; place on your SD card root, then insert and reboot.', 'success');
+        showStatus('Saved as <code class="font-mono text-[11px] text-paper-ink" style="border: 0.5px solid var(--paper-rule); padding: 1px 4px;">update.bin</code> — place on your SD card root, then insert and reboot.', 'success');
         resetButton(downloadBtn, dlLabel, dlIcon, dlSpinner, 'Download .bin for SD card');
       } catch (err) {
         console.error(err);
